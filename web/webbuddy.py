@@ -3,6 +3,8 @@
 
     python webbuddy.py                    start server + window in the screen corner
     python webbuddy.py --no-window        only the server (open http://127.0.0.1:8787)
+    python webbuddy.py --christmas        Santa hat + snow (switches live if already running)
+    python webbuddy.py --regular          no Christmas decorations (also switches live)
     python webbuddy.py --install-startup  start automatically when you log in (Windows)
     python webbuddy.py --uninstall-startup
 
@@ -38,12 +40,16 @@ DEFAULT_CONFIG = {
 }
 
 
+THEME = {}  # live overrides from --christmas / --regular, e.g. {"christmas": True}
+
+
 def load_config():
     cfg = dict(DEFAULT_CONFIG)
     try:
         cfg.update(json.loads((HERE / "config.json").read_text(encoding="utf-8")))
     except (OSError, ValueError):
         pass
+    cfg.update(THEME)
     return cfg
 
 
@@ -72,7 +78,7 @@ class Hub:
                 for k in ("five_hour", "seven_day"):
                     if isinstance(data.get(k), dict):
                         self.usage[k] = data[k]
-            else:
+            elif kind == "event":
                 self.last_event = (time.time(), data)
             msg = json.dumps({"kind": kind, "data": data})
             for q in self.clients:
@@ -176,7 +182,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split("?")[0]
-        if path not in ("/usage", "/event", "/viewport"):
+        if path not in ("/usage", "/event", "/viewport", "/theme"):
             self._send(404, '{"error":"not found"}')
             return
         try:
@@ -190,6 +196,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/viewport":
             VIEWPORT["data"] = data
             VIEWPORT["event"].set()
+        elif path == "/theme":
+            THEME.update({k: v for k, v in data.items() if k == "christmas"})
+            HUB.publish("config", dict(THEME))
         elif path == "/usage":
             HUB.publish("usage", data.get("rate_limits", data))
         else:
@@ -228,6 +237,31 @@ def find_browser():
         if os.path.isfile(c):
             return c
     return shutil.which("msedge") or shutil.which("chrome") or shutil.which("google-chrome")
+
+
+def reserve_autohide_taskbar(work):
+    """An auto-hiding taskbar isn't excluded from the work area, so it would slide up
+    over the window. Keep its space free anyway so the buddy sits just above it."""
+    import ctypes
+    from ctypes import wintypes
+
+    class APPBARDATA(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("hWnd", wintypes.HWND), ("uCallbackMessage", wintypes.UINT),
+                    ("uEdge", wintypes.UINT), ("rc", wintypes.RECT), ("lParam", wintypes.LPARAM)]
+
+    abd = APPBARDATA(cbSize=ctypes.sizeof(APPBARDATA))
+    shell32 = ctypes.windll.shell32
+    if not shell32.SHAppBarMessage(4, ctypes.byref(abd)) & 1:       # ABM_GETSTATE, ABS_AUTOHIDE
+        return
+    if not shell32.SHAppBarMessage(5, ctypes.byref(abd)):           # ABM_GETTASKBARPOS
+        return
+    r = abd.rc
+    size_v, size_h = r.bottom - r.top, r.right - r.left
+    edge = abd.uEdge                     # 0 left, 1 top, 2 right, 3 bottom
+    if edge == 3: work.bottom -= size_v
+    elif edge == 1: work.top += size_v
+    elif edge == 0: work.left += size_h
+    elif edge == 2: work.right -= size_h
 
 
 def run_window(cfg):
@@ -290,6 +324,7 @@ def run_window(cfg):
     SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE, SWP_SHOWWINDOW = 0x1, 0x2, 0x10, 0x40
     work = wintypes.RECT()
     user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(work), 0)   # SPI_GETWORKAREA
+    reserve_autohide_taskbar(work)
 
     def place():
         """Size the window so the page is exactly 128x64 * scale, then snap to the corner.
@@ -352,9 +387,24 @@ def startup(install):
             print("ClawdBuddy removed from startup.")
 
 
+def switch_theme():
+    import urllib.request
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{PORT}/theme", data=json.dumps(THEME).encode(),
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=2).read()
+        log(f"switched running ClawdBuddy to {THEME}")
+        return True
+    except OSError:
+        return False
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--no-window", action="store_true")
+    theme = ap.add_mutually_exclusive_group()
+    theme.add_argument("--christmas", action="store_true", help="Santa hat + snow")
+    theme.add_argument("--regular", action="store_true", help="no Christmas decorations")
     ap.add_argument("--install-startup", action="store_true")
     ap.add_argument("--uninstall-startup", action="store_true")
     a = ap.parse_args()
@@ -363,9 +413,13 @@ def main():
         startup(a.install_startup)
         return
 
+    if a.christmas or a.regular:
+        THEME["christmas"] = bool(a.christmas)
     try:
         start_server()
     except OSError:
+        if THEME and switch_theme():      # already running: switch it live
+            return
         log(f"port {PORT} busy - is ClawdBuddy already running?")
         sys.exit(f"Port {PORT} is busy - ClawdBuddy is probably already running.")
     load_snapshots(HUB)

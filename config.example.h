@@ -28,3 +28,7 @@ const int NIGHT_END   = 7;
 // Set to true if your button connects GPIO 23 to GND instead (internal pull-up).
 // A TTP223 touch module works with the default.
 #define BUTTON_ACTIVE_LOW false
+
+// Christmas mode: Santa hat + falling snow.
+// 0 = off, 1 = always on, 2 = auto (December 1 to January 6)
+#define CHRISTMAS 2

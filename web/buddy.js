@@ -174,7 +174,7 @@ const TASK_INK = [INK_CYAN, INK_BLUE, INK_BLUE, INK_ORANGE, INK_YELLOW, INK_CYAN
 // =====================================================================
 //                               CONFIG
 // =====================================================================
-let CFG = { place: "Almaty", latitude: 43.2295, longitude: 76.8374, night_start: 23, night_end: 7, color: false };
+let CFG = { place: "Almaty", latitude: 43.2295, longitude: 76.8374, night_start: 23, night_end: 7, color: false, christmas: "auto" };
 
 // =====================================================================
 //                               STATE
@@ -362,7 +362,9 @@ function drawTimeCard(yo) {
     textAt(x + t.length * 12 + 7, 1 + yo, 2, "C");
   }
   ink(INK_GRAY);
-  textAt(0, 21 + yo, 1, `${DAYS[nowTm.getDay()]}, ${pad2(nowTm.getDate())} ${MONTHS[nowTm.getMonth()]}`);
+  const xmasDay = isChristmas() && nowTm.getMonth() === 11 && nowTm.getDate() === 25;
+  if (xmasDay) ink(INK_RED);
+  textAt(0, 21 + yo, 1, xmasDay ? "Merry Christmas!" : `${DAYS[nowTm.getDay()]}, ${pad2(nowTm.getDate())} ${MONTHS[nowTm.getMonth()]}`);
 }
 
 function drawAirCard(yo) {
@@ -442,7 +444,7 @@ function drawInfoBand(now) {
 // =====================================================================
 //                            MASCOT DRAWING
 // =====================================================================
-function drawClawd(ox, oy, s, eyes, look, lookY, legs, armL, armR, sitting, bob, mask) {
+function drawClawd(ox, oy, s, eyes, look, lookY, legs, armL, armR, sitting, bob, mask, xmas) {
   const by = oy + bob;
   ink(INK_ORANGE);
   display.fillRect(ox + 2 * s, by, 10 * s, 5 * s, WHITE);
@@ -485,6 +487,44 @@ function drawClawd(ox, oy, s, eyes, look, lookY, legs, armL, armR, sitting, bob,
     ink(INK_ORANGE);
     display.drawLine(ox + 2 * s, by + 2 * s + 2, mx0, my0, BLACK);
     display.drawLine(ox + 12 * s - 1, by + 2 * s + 2, mx0 + 8 * s - 1, my0, BLACK);
+  }
+  if (xmas) drawHat(ox, by, facing);
+}
+
+// ---- Christmas: Santa hat + snow ----
+// "christmas" in web/config.json: "auto" (Dec 1 - Jan 6), true or false.
+function isChristmas() {
+  const c = CFG.christmas;
+  if (c === true || c === false) return c;
+  const m = nowTm.getMonth(), d = nowTm.getDate();
+  return m === 11 || (m === 0 && d <= 6);
+}
+
+// hat rows above the head (dir = facing; the tip droops backwards)
+const HAT_CONE = [[10, 31], [11, 29], [12, 27], [12, 24], [11, 21], [9, 18], [6, 14], [3, 10]];  // [from, to] x offsets, bottom row first
+function drawHat(ox, by, dir) {
+  // stay below the info text; mid-jump keep a 2px gap so the hat never looks like an underline
+  const top = by >= GROUND_Y - MH ? BAND_H - 1 : BAND_H + 1;
+  const put = (dx, y) => {
+    const x = dir > 0 ? ox + dx : ox + MW - 1 - dx;
+    if (y >= top) display.px(x, y, WHITE);
+  };
+  ink(INK_WHITE);                                    // fur trim, 1px gap above the head
+  for (let y = by - 3; y <= by - 2; y++) for (let dx = 5; dx <= 36; dx++) put(dx, y);
+  ink(INK_RED);                                      // the hat itself
+  HAT_CONE.forEach(([a, b], r) => { for (let dx = a; dx <= b; dx++) put(dx, by - 4 - r); });
+  ink(INK_WHITE);                                    // pom-pom
+  for (let y = by - 10; y <= by - 8; y++) for (let dx = 0; dx <= 2; dx++) put(dx, y);
+}
+
+function drawSnow(now) {
+  ink(INK_WHITE);
+  const span = GROUND_Y - BAND_H;
+  for (let i = 0; i < 12; i++) {
+    const v = 6 + (i * 7) % 9;                       // fall speed, px per second
+    const y = BAND_H + 1 + (Math.trunc(Math.trunc(now / 50) * v / 20) + i * 17) % span;
+    const x = (i * 37 + 11 + Math.trunc(2 * Math.sin(now / 900 + i))) % W;
+    display.px(x, y, WHITE);
   }
 }
 
@@ -663,6 +703,8 @@ function updateAndDrawMascot(now) {
   const ox = Math.trunc(mx + 0.5);
   const oy = sitting ? GROUND_Y - 5 * S : GROUND_Y - MH - Math.trunc(jumpY);
 
+  const xmas = isChristmas();
+  if (xmas) drawSnow(now);
   ink(INK_GRAY);
   for (let x = 0; x < W; x += 4) display.px(x, GROUND_Y + 1, WHITE);
   const shadow = Math.max(10, 30 - Math.trunc(jumpY) * 3);
@@ -687,7 +729,7 @@ function updateAndDrawMascot(now) {
   } else miniX = mx;
 
   const mask = airLevel(usAqi) >= 3 && !sitting;
-  drawClawd(ox, oy, S, eyes, lookX, lookY, legPhase, armL, armR, sitting, bob, mask);
+  drawClawd(ox, oy, S, eyes, lookX, lookY, legPhase, armL, armR, sitting, bob, mask, xmas);
 
   ink(INK_GRAY);
   if (speedLines && walking) {
@@ -755,6 +797,7 @@ function connectEvents() {
       const msg = JSON.parse(m.data);
       if (msg.kind === "usage") applyUsage(msg.data);
       else if (msg.kind === "event") applyEvent(msg.data);
+      else if (msg.kind === "config") Object.assign(CFG, msg.data);   // live theme switch
     } catch (e) { /* ignore malformed */ }
   };
   // EventSource reconnects by itself if the server restarts

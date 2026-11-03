@@ -53,7 +53,7 @@ Air quality is shown as **Clean → Fine → Hazy → Smog → Bad! → Toxic** 
 | waiting for permission | screen flashes, jumps with `!` |
 | done | happy dance, scrolls Claude's last message |
 
-Also: wanders, hops, stretches and sits when idle · tired eyes at ≥70% usage, sweating at ≥90%, asleep at 100% · wears a mask when air is smoggy · dims and sleeps at night.
+Also: wears a [Santa hat](#christmas-mode) in the snow from December 1 to January 6 · wanders, hops, stretches and sits when idle · tired eyes at ≥70% usage, sweating at ≥90%, asleep at 100% · wears a mask when air is smoggy · dims and sleeps at night.
 
 **Controls:** tap / click = hop (and dismiss the `!` alert) · double tap / double click = next card · hold = pet it ♥
 
@@ -80,7 +80,7 @@ This adds a status line and a few hooks to `~/.claude/settings.json` (a backup i
 python web/webbuddy.py
 ```
 
-A small window appears in the bottom-right corner and stays on top of other windows. Close it to stop it.
+A small window appears in the bottom-right corner, just above the taskbar, and stays on top of other windows. Close it to stop it.
 
 **Start it automatically at login (Windows):**
 
@@ -93,10 +93,10 @@ python web/webbuddy.py --install-startup     # undo with --uninstall-startup
 ```json
 { "place": "Berlin", "latitude": 52.52, "longitude": 13.40,
   "corner": "bottom-right", "scale": 3, "margin": 12, "margin_top": 12,
-  "night_start": 23, "night_end": 7, "color": false }
+  "night_start": 23, "night_end": 7, "color": false, "christmas": "auto" }
 ```
 
-`color` turns on [colors](#colors-screen-version). `corner` can be `bottom-right`, `bottom-left`, `top-right` or `top-left`. `scale` 3 means each OLED pixel is 3×3 screen pixels. Pick a scale that gives whole pixels at your display scaling to keep it sharp: at 125%, use 1.6 or 2.4. `margin` is the gap to the screen edge. `margin_top` sets the top gap separately, e.g. `36` with `"corner": "top-right"` to sit just below the close/minimize buttons of maximized windows.
+`color` turns on [colors](#colors-screen-version). `christmas` is explained under [Christmas mode](#christmas-mode). `corner` can be `bottom-right`, `bottom-left`, `top-right` or `top-left`. `scale` 3 means each OLED pixel is 3×3 screen pixels. Pick a scale that gives whole pixels at your display scaling to keep it sharp: at 125%, use 1.6 or 2.4. `margin` is the gap to the screen edge. `margin_top` sets the top gap separately, e.g. `36` with `"corner": "top-right"` to sit just below the close/minimize buttons of maximized windows.
 
 ### Colors (screen version)
 
@@ -113,7 +113,7 @@ Set it back to `false` (or remove the line) for single color. Colors only tint w
 | 🟧 Orange | the mascot (and its mini-me) |
 | 🟢 Green | usage below 70% · clean or fine air · **All done!** |
 | 🟡 Yellow | usage 70–89% · hazy air · **Running** · 25°C or warmer · editing sparks |
-| 🔴 Red | usage 90% or more · bad or toxic air · **Needs you!** · 32°C or warmer |
+| 🔴 Red | usage 90% or more · bad or toxic air · **Needs you!** · 32°C or warmer · Santa hat |
 | 🟠 Amber | smoggy air |
 | 🔵 Blue | **Reading** / **Searching** · below 5°C · sweat drops |
 | 🩵 Cyan | **Thinking** / **Browsing** · magnifying glass · `Zz` |
@@ -166,6 +166,27 @@ If `deskbuddy.local` doesn't resolve on your network, tell the scripts the IP in
 ```json
 "env": { "DESKBUDDY_HOST": "192.168.1.132" }
 ```
+
+## Christmas mode
+
+<p align="center">
+  <img src="docs/christmas.png" alt="ClawdBuddy wearing a Santa hat in falling snow, in single color (top) and color (bottom)">
+</p>
+
+ClawdBuddy puts on a Santa hat and it starts snowing. The hat's tip flips when he turns around, and on December 25th the date line says *Merry Christmas!* It works in single color, in color and on the OLED.
+
+By default it turns on by itself from **December 1 to January 6**.
+
+**Screen version:** set `"christmas"` in `web/config.json` to `"auto"` (default), `true` (always) or `false` (never). Or switch on the spot, even while it's running:
+
+```bash
+python web/webbuddy.py --christmas    # hat + snow
+python web/webbuddy.py --regular      # back to normal
+```
+
+If ClawdBuddy is already open, these switch the running window instantly instead of opening a new one. Handy for two desktop shortcuts or `.bat` files.
+
+**ESP32 version:** set `CHRISTMAS` in `config.h` to `2` (auto, default), `1` (always) or `0` (never), then upload again.
 
 ## Running only one version
 
@@ -235,6 +256,8 @@ curl $B/state     # screen version: status JSON
 
 ## Fixes
 
+- **Screen version stays above an auto-hiding taskbar:** Windows doesn't reserve space for a taskbar that auto-hides, so it used to slide up over the window. ClawdBuddy now keeps that space free.
+- **Christmas mode:** Santa hat and snow, automatic from December 1 to January 6, with `--christmas` / `--regular` to switch the running window live (see [Christmas mode](#christmas-mode)).
 - **Screen version can be colored:** `"color": true` in `web/config.json` tints usage, air quality, temperature and activity by meaning (see [Colors](#colors-screen-version)). Single color stays the default.
 - **Screen version catches up when started mid-task:** opening ClawdBuddy while Claude Code is already busy now shows the current activity and usage bars immediately, instead of waiting for Claude's next action. `pc/deskbuddy.py` always saves the latest activity and usage, and `web/webbuddy.py` loads them on start.
 - **Screen version never opens a second window:** starting it again while it's running does nothing. On Windows, the port wasn't claimed exclusively, so a second copy could start. A window left over from a stopped run is now reused instead of duplicated.

@@ -59,6 +59,9 @@
 #ifndef BUTTON_ACTIVE_LOW
 #define BUTTON_ACTIVE_LOW false   // true if the button connects GPIO 23 to GND
 #endif
+#ifndef CHRISTMAS
+#define CHRISTMAS 2               // Santa hat + snow: 0 = off, 1 = always, 2 = auto (Dec 1 - Jan 6)
+#endif
 const unsigned long DEBOUNCE_MS = 25;
 unsigned long buttonPresses = 0;   // reported on GET / for wiring checks
 #define SCREEN_W 128
@@ -498,6 +501,7 @@ void drawTimeCard(int yo) {
 
   if (timeOk) strftime(buf, sizeof(buf), "%A, %d %b", &nowTm);
   else strcpy(buf, "syncing clock...");
+  if (isChristmas() && timeOk && nowTm.tm_mon == 11 && nowTm.tm_mday == 25) strcpy(buf, "Merry Christmas!");
   textAt(0, 21 + yo, 1, buf);
 }
 
@@ -580,8 +584,39 @@ void drawInfoBand(unsigned long now) {
 //                            MASCOT DRAWING
 // =====================================================================
 // ox, oy = top-left of the 14x7-cell grid at scale s.
+// ---------- Christmas: Santa hat + snow ----------
+bool isChristmas() {
+  if (CHRISTMAS != 2) return CHRISTMAS == 1;
+  return timeOk && (nowTm.tm_mon == 11 || (nowTm.tm_mon == 0 && nowTm.tm_mday <= 6));
+}
+
+// hat rows above the head, bottom row first ([from, to] x offsets); the tip droops backwards
+const int8_t HAT_CONE[8][2] = {{10, 31}, {11, 29}, {12, 27}, {12, 24}, {11, 21}, {9, 18}, {6, 14}, {3, 10}};
+void drawHat(int ox, int by, int dir) {
+  // stay below the info text; mid-jump keep a 2px gap so the hat never looks like an underline
+  int top = by >= GROUND_Y - MH ? BAND_H - 1 : BAND_H + 1;
+  auto row = [&](int a, int b, int y) {
+    if (y < top) return;
+    int x0 = dir > 0 ? ox + a : ox + MW - 1 - b;
+    display.drawFastHLine(x0, y, b - a + 1, WHITE);
+  };
+  for (int y = by - 3; y <= by - 2; y++) row(5, 36, y);              // fur trim
+  for (int r = 0; r < 8; r++) row(HAT_CONE[r][0], HAT_CONE[r][1], by - 4 - r);
+  for (int y = by - 10; y <= by - 8; y++) row(0, 2, y);              // pom-pom
+}
+
+void drawSnow(unsigned long now) {
+  const int span = GROUND_Y - BAND_H;
+  for (int i = 0; i < 12; i++) {
+    int v = 6 + (i * 7) % 9;                                         // px per second
+    int y = BAND_H + 1 + (int)(((now / 50) * v / 20 + i * 17) % span);
+    int x = (i * 37 + 11 + (int)(2 * sinf(now / 900.0f + i))) % SCREEN_W;
+    display.drawPixel(x, y, WHITE);
+  }
+}
+
 void drawClawd(int ox, int oy, int s, Eyes eyes, int look, int lookY, int legs,
-               int armL, int armR, bool sitting, int bob, bool mask) {
+               int armL, int armR, bool sitting, int bob, bool mask, bool xmas) {
   int by = oy + bob;
   display.fillRect(ox + 2 * s, by, 10 * s, 5 * s, WHITE);                 // body
   display.fillRect(ox, by + (2 + armL) * s, 2 * s, s, WHITE);             // left arm
@@ -627,6 +662,7 @@ void drawClawd(int ox, int oy, int s, Eyes eyes, int look, int lookY, int legs,
     display.drawLine(ox + 2 * s, by + 2 * s + 2, mx0, my0, BLACK);
     display.drawLine(ox + 12 * s - 1, by + 2 * s + 2, mx0 + 8 * s - 1, my0, BLACK);
   }
+  if (xmas) drawHat(ox, by, facing);
 }
 
 void drawSideBubble(int ox, int oy, const char* txt) {
@@ -819,6 +855,9 @@ void updateAndDrawMascot(unsigned long now) {
   int ox = (int)(mx + 0.5f);
   int oy = sitting ? GROUND_Y - 5 * S : GROUND_Y - MH - (int)jumpY;
 
+  bool xmas = isChristmas();
+  if (xmas) drawSnow(now);
+
   // ground + shadow
   for (int x = 0; x < SCREEN_W; x += 4) display.drawPixel(x, GROUND_Y + 1, WHITE);
   int shadow = max(10, 30 - (int)jumpY * 3);
@@ -841,11 +880,11 @@ void updateAndDrawMascot(unsigned long now) {
     miniX += (target - miniX) * 0.08f;
     int mxi = constrain((int)miniX, 0, SCREEN_W - 14);
     bool step = (now / 120) % 2;
-    drawClawd(mxi, GROUND_Y - 7, 1, EYE_OPEN, 0, 0, step ? 1 : 2, 0, 0, false, 0, false);
+    drawClawd(mxi, GROUND_Y - 7, 1, EYE_OPEN, 0, 0, step ? 1 : 2, 0, 0, false, 0, false, false);
   } else miniX = mx;
 
   bool mask = airLevel(usAqi) >= 3 && !sitting;
-  drawClawd(ox, oy, S, eyes, lookX, lookY, legPhase, armL, armR, sitting, bob, mask);
+  drawClawd(ox, oy, S, eyes, lookX, lookY, legPhase, armL, armR, sitting, bob, mask, xmas);
 
   if (speedLines && walking) {                       // motion streaks behind it
     for (int i = 0; i < 3; i++) {
