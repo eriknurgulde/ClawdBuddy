@@ -17,6 +17,7 @@ import queue
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -83,8 +84,8 @@ class Hub:
             self.clients.append(q)
             if self.usage:
                 q.put(json.dumps({"kind": "usage", "data": self.usage}))
-            # replay a recent event so a freshly opened page shows the current activity
-            if self.last_event and time.time() - self.last_event[0] < 60:
+            # replay the current activity so a freshly opened page catches up
+            if self.last_event and still_relevant(self.last_event[1]):
                 q.put(json.dumps({"kind": "event", "data": self.last_event[1]}))
         return q
 
@@ -92,6 +93,35 @@ class Hub:
         with self.lock:
             if q in self.clients:
                 self.clients.remove(q)
+
+
+def still_relevant(ev):
+    """Is a saved event still worth showing? (age from its own timestamp)"""
+    age = time.time() - ev.get("ts", 0) / 1000
+    if ev.get("type") == "done":
+        return age < 8            # the celebration lasts 8 s
+    if ev.get("type") == "idle":
+        return False
+    return age < 10 * 60          # working/waiting: the page times these out after 10 min
+
+
+def load_snapshots(hub):
+    """Catch up on what Claude Code did while no buddy was running."""
+    tmp = tempfile.gettempdir()
+    try:
+        with open(os.path.join(tmp, "deskbuddy_last_usage.json"), encoding="utf-8") as f:
+            usage = json.load(f)
+        if isinstance(usage, dict):
+            hub.usage.update({k: v for k, v in usage.items() if k in ("five_hour", "seven_day")})
+    except (OSError, ValueError):
+        pass
+    try:
+        with open(os.path.join(tmp, "deskbuddy_last_event.json"), encoding="utf-8") as f:
+            ev = json.load(f)
+        if isinstance(ev, dict):
+            hub.last_event = (ev.get("ts", 0) / 1000, ev)
+    except (OSError, ValueError):
+        pass
 
 
 HUB = Hub()
@@ -338,7 +368,9 @@ def main():
     except OSError:
         log(f"port {PORT} busy - is ClawdBuddy already running?")
         sys.exit(f"Port {PORT} is busy - ClawdBuddy is probably already running.")
-    log(f"server on http://127.0.0.1:{PORT}")
+    load_snapshots(HUB)
+    log(f"server on http://127.0.0.1:{PORT} (caught up: usage={bool(HUB.usage)}, "
+        f"event={HUB.last_event[1].get('type') + '/' + str(HUB.last_event[1].get('task')) if HUB.last_event else None})")
 
     if a.no_window or os.name != "nt":
         print(f"ClawdBuddy running at http://127.0.0.1:{PORT}/  (Ctrl+C to stop)")

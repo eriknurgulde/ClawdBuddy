@@ -34,6 +34,10 @@ from urllib.parse import urlparse
 TARGETS = [h for h in (os.environ.get("DESKBUDDY_HOST", "deskbuddy.local"),
                        os.environ.get("DESKBUDDY_WEB", "127.0.0.1:8787")) if h and h != "off"]
 STATE_FILE = os.path.join(tempfile.gettempdir(), "deskbuddy_state.json")
+# Latest activity + usage, kept even when no buddy is listening, so a buddy
+# started mid-task can catch up (web/webbuddy.py reads these on start).
+LAST_EVENT_FILE = os.path.join(tempfile.gettempdir(), "deskbuddy_last_event.json")
+LAST_USAGE_FILE = os.path.join(tempfile.gettempdir(), "deskbuddy_last_usage.json")
 TIMEOUT = 1.0
 RESEND_EVERY = 120  # seconds; re-push unchanged usage so a rebooted board catches up
 DETAIL_MAX = 90
@@ -111,6 +115,25 @@ def post(state, path, payload, hosts=None):
     return results
 
 
+def write_snapshot(path, data, ts=None):
+    """Atomically save the latest event/usage. With ts, never overwrite a newer one
+    (async hooks can finish out of order)."""
+    try:
+        if ts is not None:
+            try:
+                with open(path, encoding="utf-8") as f:
+                    if json.load(f).get("ts", 0) > ts:
+                        return
+            except (OSError, ValueError):
+                pass
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
 def read_stdin_json():
     try:
         return json.loads(sys.stdin.buffer.read().decode("utf-8") or "{}")
@@ -169,6 +192,7 @@ def statusline():
     if not windows:
         return
     key = json.dumps(windows, sort_keys=True)
+    write_snapshot(LAST_USAGE_FILE, windows)
     state = load_state()
     sent = state.setdefault("sent", {})   # per target: [payload, time]
     due = [h for h in TARGETS
@@ -204,6 +228,7 @@ def hook():
         return
 
     msg["detail"] = screen_text(msg.get("detail", ""))
+    write_snapshot(LAST_EVENT_FILE, msg, msg["ts"])
     state = load_state()
     post(state, "/event", msg)
     save_state(state)
