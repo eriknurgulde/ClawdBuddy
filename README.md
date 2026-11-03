@@ -1,15 +1,25 @@
 # ClawdBuddy
 
-A tiny pixel critter that lives on a 128×64 OLED on your desk and acts out what **Claude Code** is doing: it reads with a magnifying glass, hammers while editing, sprints while commands run, and jumps up and down when Claude needs your permission. It also shows your **Claude usage limits**, the **time**, the **temperature** and **how polluted the air is**, in plain words.
-
-Built from an ESP32, an SSD1306 OLED and a push button: about $10 of parts.
-**No hardware?** Run the [screen version](#screen-version-no-hardware): the exact same buddy in a small always-on-top window in the corner of your screen.
+A tiny pixel critter that acts out what **Claude Code** is doing: it reads with a magnifying glass, hammers while editing, sprints while commands run, and jumps up and down when Claude needs your permission. It also shows your **Claude usage limits**, the **time**, the **temperature** and **how polluted the air is**, in plain words.
 
 > Fan project. Not affiliated with or endorsed by Anthropic.
 
+## Two versions: pick one or run both
+
+| | 🖥️ Screen version | 🔌 ESP32 version |
+|---|---|---|
+| **What** | A small always-on-top window in the corner of your screen | A real 128×64 OLED gadget on your desk |
+| **You need** | Python 3 + Edge or Chrome | ESP32 + SSD1306 OLED + a button (~$10) |
+| **Setup time** | ~2 minutes | ~30 minutes (wiring + flashing) |
+| **Controls** | mouse: click / double click / hold | button: tap / double tap / hold |
+
+Both versions look and behave **exactly the same**. The screen version is a pixel-for-pixel port of the firmware. If you run both, they update together.
+
+**Setup:** everyone does [Step 1](#step-1-connect-claude-code-everyone), then [Step 2A](#step-2a-screen-version) for the screen version and/or [Step 2B](#step-2b-esp32-version) for the ESP32 version.
+
 ## What it shows
 
-The screen is split into an **info card** on top (big text, slides to the next card every few seconds) and the **mascot's world** below.
+An **info card** on top (big text, slides to the next card every few seconds) and the **mascot's world** below.
 
 | Card | Example |
 |---|---|
@@ -37,9 +47,55 @@ Air quality is shown as **Clean → Fine → Hazy → Smog → Bad! → Toxic** 
 
 Also: wanders, hops, stretches and sits when idle · tired eyes at ≥70% usage, sweating at ≥90%, asleep at 100% · wears a mask when air is smoggy · dims and sleeps at night.
 
-**Button:** tap = hop / dismiss alert · double tap = next card · long press = pet it ♥
+**Controls:** tap / click = hop (and dismiss the `!` alert) · double tap / double click = next card · hold = pet it ♥
 
-## Hardware
+---
+
+## Step 1: Connect Claude Code (everyone)
+
+You need Python 3 on the computer where you run Claude Code.
+
+```bash
+git clone https://github.com/eriknurgulde/ClawdBuddy.git
+cd ClawdBuddy
+python pc/install.py
+```
+
+This adds a status line and a few hooks to `~/.claude/settings.json` (a backup is saved first) and works for both versions. Restart Claude Code afterwards.
+
+- The hooks run in the background (`"async": true`), so they never slow Claude down. If no buddy is running, the updates are silently dropped.
+- To remove everything: `python pc/install.py --uninstall`
+
+## Step 2A: Screen version
+
+```bash
+python web/webbuddy.py
+```
+
+A small window appears in the bottom-right corner and stays on top of other windows. Close it to stop it.
+
+**Start it automatically at login (Windows):**
+
+```bash
+python web/webbuddy.py --install-startup     # undo with --uninstall-startup
+```
+
+**Location, corner and size:** create `web/config.json`. Every field is optional:
+
+```json
+{ "place": "Berlin", "latitude": 52.52, "longitude": 13.40,
+  "corner": "bottom-right", "scale": 3, "night_start": 23, "night_end": 7 }
+```
+
+`corner` can be `bottom-right`, `bottom-left`, `top-right` or `top-left`. `scale` 3 means each OLED pixel is 3×3 screen pixels.
+
+**macOS / Linux:** the always-on-top window is Windows-only for now. Run `python web/webbuddy.py --no-window` and open `http://127.0.0.1:8787` in your browser (an app window or pinned tab works well).
+
+The local server only listens on `127.0.0.1:8787`, so nothing is exposed to your network.
+
+## Step 2B: ESP32 version
+
+### Parts
 
 | Part | Notes |
 |---|---|
@@ -47,88 +103,82 @@ Also: wanders, hops, stretches and sits when idle · tired eyes at ≥70% usage,
 | SSD1306 0.96" OLED, 128×64, I²C | address `0x3C` |
 | Push button | or a TTP223 touch module |
 
+### Wiring
+
 | Module pin | ESP32 pin |
 |---|---|
 | OLED VCC / GND | 3V3 / GND |
 | OLED SDA | GPIO 21 |
 | OLED SCL | GPIO 22 |
-| Button | between GPIO 23 and 3V3 (no resistor needed) |
+| Button | GPIO 23 ↔ 3V3, **or** GPIO 23 ↔ GND (see `BUTTON_ACTIVE_LOW` below). No resistor needed. |
 | *or* TTP223 VCC / GND / SIG | 3V3 / GND / GPIO 23 |
 
-## Setup
-
-### 1. Flash the ESP32
+### Flash
 
 1. Install the **esp32** board package (v3.x) in Arduino IDE.
 2. Install libraries: **Adafruit SSD1306**, **Adafruit GFX**, **ArduinoJson** (v7).
-3. Copy `config.example.h` to `config.h` and set your WiFi, location and timezone.
-   (`config.h` is git-ignored, so your password stays local.)
+3. Copy `config.example.h` to `config.h` and set:
+   - your WiFi name and password (2.4 GHz only)
+   - your location and timezone
+   - `BUTTON_ACTIVE_LOW true` if your button goes to **GND** (`false` for 3V3 or a TTP223)
+
+   `config.h` is git-ignored, so your password stays local.
 4. Open `ClawdBuddy.ino`, select **ESP32 Dev Module**, upload.
 
 On boot the screen shows `deskbuddy.local` and the board's IP address.
 
-### 2. Connect Claude Code
-
-You need Python 3 on the computer where you run Claude Code.
-
-```bash
-python pc/install.py
-```
-
-This adds a status line and a few hooks to `~/.claude/settings.json` (a backup is saved first). Restart Claude Code and the mascot comes alive.
-
-If `deskbuddy.local` doesn't resolve on your network, point the scripts at the IP instead by setting an environment variable, e.g. in `~/.claude/settings.json`:
+If `deskbuddy.local` doesn't resolve on your network, tell the scripts the IP in `~/.claude/settings.json`:
 
 ```json
 "env": { "DESKBUDDY_HOST": "192.168.1.132" }
 ```
 
-To remove everything: `python pc/install.py --uninstall`
+## Running only one version
 
-## Screen version (no hardware)
+`pc/deskbuddy.py` sends every update to both targets. Unreachable ones are skipped quickly, so this is optional, but you can switch one off in `~/.claude/settings.json`.
 
-`web/` is a 1:1 port of the firmware: the same 128×64 frame buffer, Adafruit GFX drawing code and font, rendered crisp in a small always-on-top window in the corner of your screen. Run it instead of, or alongside, the ESP32. Both get the same updates.
-
-```bash
-python web/webbuddy.py                    # opens the window (bottom-right corner)
-python web/webbuddy.py --install-startup  # start it automatically at login (Windows)
-python web/webbuddy.py --uninstall-startup
-```
-
-It needs Python 3 and Edge or Chrome. It opens the page as a small app window and keeps it on top. Close the window to stop it. The mouse is the button: **click** = tap, **double click** = next card, **hold** = pet.
-
-The server only listens on `127.0.0.1:8787`. To change the location, corner or size, create `web/config.json`:
+Screen version only (no ESP32):
 
 ```json
-{ "place": "Berlin", "latitude": 52.52, "longitude": 13.40,
-  "corner": "bottom-right", "scale": 3, "night_start": 23, "night_end": 7 }
+"env": { "DESKBUDDY_HOST": "off" }
 ```
 
-On macOS/Linux, `python web/webbuddy.py --no-window` runs the server; open `http://127.0.0.1:8787` yourself.
+ESP32 only (no screen version):
 
-`pc/deskbuddy.py` sends every update to both the board (`DESKBUDDY_HOST`) and the screen buddy (`DESKBUDDY_WEB`). Set either one to `off` if you don't use it.
+```json
+"env": { "DESKBUDDY_WEB": "off" }
+```
+
+---
 
 ## How it works
 
 ```
-Claude Code ──status line (rate_limits JSON)──► pc/deskbuddy.py ──HTTP──► ESP32 /usage  + screen buddy
-            ──hooks (prompt, tools, stop…)────► pc/deskbuddy.py ──HTTP──► ESP32 /event  + screen buddy
-ESP32 ──HTTPS──► Open-Meteo (temperature, US AQI, PM2.5), NTP (time)
+                 status line (rate_limits)              ┌─► ESP32 board    (deskbuddy.local)
+Claude Code ──── hooks (prompt, tools, stop…) ─► pc/deskbuddy.py ─┤
+                                                        └─► screen version (127.0.0.1:8787)
+
+Both fetch time + weather + air quality themselves (NTP / browser clock, Open-Meteo).
 ```
 
-- **Usage limits** come from the official `rate_limits` field Claude Code passes to status line scripts (Pro/Max plans). The numbers are shared with the Claude apps, so the bars show your real total. They refresh whenever Claude Code is active; in between, the board counts down to the reset on its own.
-- **Activity** comes from Claude Code hooks registered with `"async": true`, so they never slow Claude down. Every network call has a 1 s timeout and failures are ignored. If the board is unplugged, nothing happens.
-- Weather and air quality are fetched on the ESP32's second core every 10 minutes, so animations never stutter.
+- **Usage limits** come from the official `rate_limits` field Claude Code passes to status line scripts (Pro/Max plans). The numbers are shared with the Claude apps, so the bars show your real total. They refresh whenever Claude Code is active; in between, the buddy counts down to the reset on its own.
+- **Activity** comes from Claude Code hooks. Every network call has a 1 s timeout and failures are ignored.
+- **Screen version** (`web/`): a JavaScript port of the firmware. It uses the same 128×64 1-bit frame buffer, the same Adafruit GFX drawing algorithms and font, and the same mascot logic. A small standard-library Python server (`webbuddy.py`) receives updates, streams them to the page, and pins an Edge/Chrome app window to the screen corner.
+- **ESP32 version**: weather and air quality are fetched on the second core every 10 minutes, so animations never stutter.
 
 ### HTTP API
 
-Handy for scripting or testing without Claude Code:
+Both versions accept the same messages, which is handy for scripting or testing without Claude Code:
 
 ```bash
-curl http://deskbuddy.local/                                   # status JSON
-curl -X POST http://deskbuddy.local/event -d '{"type":"working","task":"run","detail":"npm test"}'
-curl -X POST http://deskbuddy.local/event -d '{"type":"waiting","detail":"Needs permission"}'
-curl -X POST http://deskbuddy.local/usage -d '{"five_hour":{"used_percentage":42,"resets_at":1893456000}}'
+B=http://deskbuddy.local      # ESP32 version
+B=http://127.0.0.1:8787       # screen version
+
+curl -X POST $B/event -d '{"type":"working","task":"run","detail":"npm test"}'
+curl -X POST $B/event -d '{"type":"waiting","detail":"Needs permission"}'
+curl -X POST $B/usage -d '{"five_hour":{"used_percentage":42,"resets_at":1893456000}}'
+curl $B/          # ESP32: status JSON
+curl $B/state     # screen version: status JSON
 ```
 
 `type`: `working` · `waiting` · `done` · `idle`
@@ -136,14 +186,22 @@ curl -X POST http://deskbuddy.local/usage -d '{"five_hour":{"used_percentage":42
 
 ## Troubleshooting
 
+**Both versions**
 - **Bars show `--`**: usage appears after Claude Code's first response in a session, and only on Pro/Max plans.
+- **Status line**: a custom status line hides some footer hints in Claude Code (like `esc to interrupt`; Esc still works). If you already had a status line, `install.py` leaves it alone. Rerun it with `--replace-statusline` to use ClawdBuddy's.
+
+**Screen version**
+- **"Port 8787 is busy"**: it's already running (check the screen corners).
+- **No window appears**: check `%LOCALAPPDATA%\ClawdBuddy\webbuddy.log`. Edge or Chrome must be installed.
+
+**ESP32 version**
 - **Nothing reacts**: open `http://deskbuddy.local/` in a browser. If it doesn't load, set `DESKBUDDY_HOST` to the IP shown on boot.
+- **Button does nothing, or presses happen by themselves**: flip `BUTTON_ACTIVE_LOW` in `config.h`. `GET /` shows `button_presses` so you can check.
 - **Clock is off**: check `TZ_INFO` in `config.h` (POSIX format, the sign is inverted: UTC+5 is `<+05>-5`).
-- **Status line**: a custom status line hides some footer hints in Claude Code (like `esc to interrupt`; Esc still works).
 
 ## Credits
 
-Hardware and touch-input approach inspired by the [ESP32 OLED Desk Bot](https://github.com/Abaymelethil) by Abay Melethil (MIT).
+Hardware and input approach inspired by the [ESP32 OLED Desk Bot](https://github.com/Abaymelethil) by Abay Melethil (MIT).
 The screen version embeds the classic 5x7 font from [Adafruit GFX](https://github.com/adafruit/Adafruit-GFX-Library) (BSD license).
 
 ## License
