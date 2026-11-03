@@ -1,0 +1,10 @@
+# Personal settings (WiFi password!)
+config.h
+
+# Build output / editor files
+build/
+*.bin
+*.elf
+__pycache__/
+.vscode/
+.DS_Store
