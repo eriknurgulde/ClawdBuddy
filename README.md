@@ -3,6 +3,7 @@
 A tiny pixel critter that lives on a 128×64 OLED on your desk and acts out what **Claude Code** is doing: it reads with a magnifying glass, hammers while editing, sprints while commands run, and jumps up and down when Claude needs your permission. It also shows your **Claude usage limits**, the **time**, the **temperature** and **how polluted the air is**, in plain words.
 
 Built from an ESP32, an SSD1306 OLED and a push button: about $10 of parts.
+**No hardware?** Run the [screen version](#screen-version-no-hardware): the exact same buddy in a small always-on-top window in the corner of your screen.
 
 > Fan project. Not affiliated with or endorsed by Anthropic.
 
@@ -84,11 +85,34 @@ If `deskbuddy.local` doesn't resolve on your network, point the scripts at the I
 
 To remove everything: `python pc/install.py --uninstall`
 
+## Screen version (no hardware)
+
+`web/` is a 1:1 port of the firmware: the same 128×64 frame buffer, Adafruit GFX drawing code and font, rendered crisp in a small always-on-top window in the corner of your screen. Run it instead of, or alongside, the ESP32. Both get the same updates.
+
+```bash
+python web/webbuddy.py                    # opens the window (bottom-right corner)
+python web/webbuddy.py --install-startup  # start it automatically at login (Windows)
+python web/webbuddy.py --uninstall-startup
+```
+
+It needs Python 3 and Edge or Chrome. It opens the page as a small app window and keeps it on top. Close the window to stop it. The mouse is the button: **click** = tap, **double click** = next card, **hold** = pet.
+
+The server only listens on `127.0.0.1:8787`. To change the location, corner or size, create `web/config.json`:
+
+```json
+{ "place": "Berlin", "latitude": 52.52, "longitude": 13.40,
+  "corner": "bottom-right", "scale": 3, "night_start": 23, "night_end": 7 }
+```
+
+On macOS/Linux, `python web/webbuddy.py --no-window` runs the server; open `http://127.0.0.1:8787` yourself.
+
+`pc/deskbuddy.py` sends every update to both the board (`DESKBUDDY_HOST`) and the screen buddy (`DESKBUDDY_WEB`). Set either one to `off` if you don't use it.
+
 ## How it works
 
 ```
-Claude Code ──status line (rate_limits JSON)──► pc/deskbuddy.py ──HTTP──► ESP32 /usage
-            ──hooks (prompt, tools, stop…)────► pc/deskbuddy.py ──HTTP──► ESP32 /event
+Claude Code ──status line (rate_limits JSON)──► pc/deskbuddy.py ──HTTP──► ESP32 /usage  + screen buddy
+            ──hooks (prompt, tools, stop…)────► pc/deskbuddy.py ──HTTP──► ESP32 /event  + screen buddy
 ESP32 ──HTTPS──► Open-Meteo (temperature, US AQI, PM2.5), NTP (time)
 ```
 
@@ -120,6 +144,7 @@ curl -X POST http://deskbuddy.local/usage -d '{"five_hour":{"used_percentage":42
 ## Credits
 
 Hardware and touch-input approach inspired by the [ESP32 OLED Desk Bot](https://github.com/Abaymelethil) by Abay Melethil (MIT).
+The screen version embeds the classic 5x7 font from [Adafruit GFX](https://github.com/adafruit/Adafruit-GFX-Library) (BSD license).
 
 ## License
 

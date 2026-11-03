@@ -13,7 +13,10 @@ Two modes, both read Claude Code's JSON from stdin:
                               Stop             -> done
                               SessionEnd       -> idle
 
-Set DESKBUDDY_HOST to the board's IP if deskbuddy.local doesn't resolve.
+Messages go to every target in parallel:
+  DESKBUDDY_HOST  the ESP32 board  (default deskbuddy.local)
+  DESKBUDDY_WEB   the on-screen buddy, web/webbuddy.py  (default 127.0.0.1:8787)
+Set either to "off" to disable it.
 Never blocks Claude: hooks are registered as async, every network call has
 a 1 s timeout, and all failures are silently ignored.
 """
@@ -23,11 +26,13 @@ import re
 import socket
 import sys
 import tempfile
+import threading
 import time
 import urllib.request
 from urllib.parse import urlparse
 
-HOST = os.environ.get("DESKBUDDY_HOST", "deskbuddy.local")
+TARGETS = [h for h in (os.environ.get("DESKBUDDY_HOST", "deskbuddy.local"),
+                       os.environ.get("DESKBUDDY_WEB", "127.0.0.1:8787")) if h and h != "off"]
 STATE_FILE = os.path.join(tempfile.gettempdir(), "deskbuddy_state.json")
 TIMEOUT = 1.0
 RESEND_EVERY = 120  # seconds; re-push unchanged usage so a rebooted board catches up
@@ -60,37 +65,50 @@ def save_state(state):
         pass
 
 
-def resolve(state):
-    """Cache the board's IP: .local lookups on Windows can take a while."""
-    ip = state.get("ip")
-    if ip and state.get("host") == HOST and time.time() - state.get("ip_ts", 0) < 3600:
-        return ip
-    name, _, port = HOST.partition(":")
+def resolve(state, host):
+    """Cache resolved IPs: .local lookups on Windows can take a while."""
+    ips = state.setdefault("ips", {})
+    hit = ips.get(host)
+    if hit and time.time() - hit[1] < 3600:
+        return hit[0]
+    name, _, port = host.partition(":")
     try:
         ip = socket.gethostbyname(name)
     except OSError:
         return None
     if port:
         ip = f"{ip}:{port}"
-    state["ip"], state["ip_ts"], state["host"] = ip, time.time(), HOST
+    ips[host] = [ip, time.time()]
     return ip
 
 
-def post(state, path, payload):
-    ip = resolve(state)
-    if not ip:
-        return False
-    req = urllib.request.Request(
-        f"http://{ip}{path}", data=json.dumps(payload).encode(), method="POST",
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            r.read()
-        return True
-    except OSError:
-        state.pop("ip", None)  # re-resolve next time (board may have a new IP)
-        return False
+def post_one(state, host, path, payload, results):
+    ip = resolve(state, host)
+    ok = False
+    if ip:
+        req = urllib.request.Request(
+            f"http://{ip}{path}", data=json.dumps(payload).encode(), method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+                r.read()
+            ok = True
+        except OSError:
+            state.get("ips", {}).pop(host, None)  # re-resolve next time
+    results[host] = ok
+
+
+def post(state, path, payload, hosts=None):
+    """POST to all targets in parallel; returns {host: succeeded}."""
+    results = {}
+    threads = [threading.Thread(target=post_one, args=(state, h, path, payload, results))
+               for h in (TARGETS if hosts is None else hosts)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(TIMEOUT + 2)
+    return results
 
 
 def read_stdin_json():
@@ -152,10 +170,13 @@ def statusline():
         return
     key = json.dumps(windows, sort_keys=True)
     state = load_state()
-    stale = time.time() - state.get("last_sent", 0) > RESEND_EVERY
-    if key != state.get("last_payload") or stale:
-        if post(state, "/usage", windows):
-            state["last_payload"], state["last_sent"] = key, time.time()
+    sent = state.setdefault("sent", {})   # per target: [payload, time]
+    due = [h for h in TARGETS
+           if sent.get(h, [None])[0] != key or time.time() - sent[h][1] > RESEND_EVERY]
+    if due:
+        for host, ok in post(state, "/usage", windows, due).items():
+            if ok:
+                sent[host] = [key, time.time()]
         save_state(state)
 
 

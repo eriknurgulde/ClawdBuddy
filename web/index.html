@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClawdBuddy</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas {
+    /* keep the 2:1 OLED ratio and scale pixels up crisply */
+    width: min(100vw, 200vh);
+    height: min(50vw, 100vh);
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    cursor: pointer;
+    touch-action: none;
+    user-select: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="oled" width="128" height="64" title="click = hop · double click = next card · hold = pet"></canvas>
+<script src="font.js"></script>
+<script src="buddy.js"></script>
+</body>
+</html>
