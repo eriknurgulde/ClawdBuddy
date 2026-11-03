@@ -84,10 +84,11 @@ python web/webbuddy.py --install-startup     # undo with --uninstall-startup
 
 ```json
 { "place": "Berlin", "latitude": 52.52, "longitude": 13.40,
-  "corner": "bottom-right", "scale": 3, "night_start": 23, "night_end": 7 }
+  "corner": "bottom-right", "scale": 3, "margin": 12, "margin_top": 12,
+  "night_start": 23, "night_end": 7 }
 ```
 
-`corner` can be `bottom-right`, `bottom-left`, `top-right` or `top-left`. `scale` 3 means each OLED pixel is 3×3 screen pixels.
+`corner` can be `bottom-right`, `bottom-left`, `top-right` or `top-left`. `scale` 3 means each OLED pixel is 3×3 screen pixels. Pick a scale that gives whole pixels at your display scaling to keep it sharp: at 125%, use 1.6 or 2.4. `margin` is the gap to the screen edge. `margin_top` sets the top gap separately, e.g. `36` with `"corner": "top-right"` to sit just below the close/minimize buttons of maximized windows.
 
 **macOS / Linux:** the always-on-top window is Windows-only for now. Run `python web/webbuddy.py --no-window` and open `http://127.0.0.1:8787` in your browser (an app window or pinned tab works well).
 
@@ -198,6 +199,13 @@ curl $B/state     # screen version: status JSON
 - **Nothing reacts**: open `http://deskbuddy.local/` in a browser. If it doesn't load, set `DESKBUDDY_HOST` to the IP shown on boot.
 - **Button does nothing, or presses happen by themselves**: flip `BUTTON_ACTIVE_LOW` in `config.h`. `GET /` shows `button_presses` so you can check.
 - **Clock is off**: check `TZ_INFO` in `config.h` (POSIX format, the sign is inverted: UTC+5 is `<+05>-5`).
+
+## Fixes
+
+- **Screen version catches up when started mid-task:** opening ClawdBuddy while Claude Code is already busy now shows the current activity and usage bars immediately, instead of waiting for Claude's next action. `pc/deskbuddy.py` always saves the latest activity and usage, and `web/webbuddy.py` loads them on start.
+- **Screen version never opens a second window:** starting it again while it's running does nothing. On Windows, the port wasn't claimed exclusively, so a second copy could start. A window left over from a stopped run is now reused instead of duplicated.
+- **Screen version `margin_top` option:** places the window below the title-bar buttons of maximized windows so they stay clickable.
+- **ESP32 version works with plain push buttons:** the button pin used to "float" without a resistor, causing phantom taps and long presses (a random ♥). It now uses the ESP32's internal pull-down, or pull-up with `BUTTON_ACTIVE_LOW`, plus 25 ms debouncing. `GET /` reports `button_presses` for checking the wiring.
 
 ## Credits
 
