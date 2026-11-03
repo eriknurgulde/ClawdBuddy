@@ -166,8 +166,20 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, '{"ok":true}')
 
 
+class Server(ThreadingHTTPServer):
+    # On Windows SO_REUSEADDR lets a second copy bind the same port, so
+    # "already running" would go unnoticed. Claim the port exclusively.
+    allow_reuse_address = os.name != "nt"
+
+    def server_bind(self):
+        import socket
+        if os.name == "nt":
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 def start_server():
-    srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    srv = Server(("127.0.0.1", PORT), Handler)
     srv.daemon_threads = True
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv
@@ -205,12 +217,9 @@ def run_window(cfg):
         while True:
             time.sleep(3600)
 
-    # Uses your normal browser profile: a fresh profile would show first-run popups.
-    subprocess.Popen([browser, f"--app=http://127.0.0.1:{PORT}/", "--window-size=420,250"])
-
     EnumProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
-    def find_window():
+    def find_windows():
         found = []
 
         def cb(hwnd, _):
@@ -222,14 +231,26 @@ def run_window(cfg):
             return True
 
         user32.EnumWindows(EnumProc(cb), 0)
-        return found[0] if found else None
+        return found
 
-    hwnd = None
-    for _ in range(150):                      # wait up to 15 s for the window
-        hwnd = find_window()
-        if hwnd:
-            break
-        time.sleep(0.1)
+    # A window left over from an earlier run (its launcher was stopped) is
+    # adopted: the page reconnects to this server by itself. Extra copies close.
+    existing = find_windows()
+    for extra in existing[1:]:
+        user32.PostMessageW(extra, 0x0010, 0, 0)          # WM_CLOSE
+    if existing:
+        hwnd = existing[0]
+        log("adopted existing window")             # it re-reports its size on reconnect
+    else:
+        # Uses your normal browser profile: a fresh profile would show first-run popups.
+        subprocess.Popen([browser, f"--app=http://127.0.0.1:{PORT}/", "--window-size=420,250"])
+        hwnd = None
+        for _ in range(150):                  # wait up to 15 s for the window
+            found = find_windows()
+            if found:
+                hwnd = found[0]
+                break
+            time.sleep(0.1)
     if not hwnd:
         log("window never appeared")
         return

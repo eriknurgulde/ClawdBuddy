@@ -699,6 +699,7 @@ function frame() {
 // =====================================================================
 function connectEvents() {
   const es = new EventSource("/events");
+  es.onopen = () => reportViewport();   // also after a server restart
   es.onmessage = m => {
     try {
       const msg = JSON.parse(m.data);
