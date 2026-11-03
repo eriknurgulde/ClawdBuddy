@@ -32,7 +32,8 @@ DEFAULT_CONFIG = {
     "night_start": 23, "night_end": 7,
     "scale": 3,                 # window size = 128x64 OLED pixels * scale
     "corner": "bottom-right",   # bottom-right | bottom-left | top-right | top-left
-    "margin": 12,
+    "margin": 12,               # gap to the screen edge (in 100%-scale pixels)
+    "margin_top": None,         # gap at the top edge; default = margin
 }
 
 
@@ -280,9 +281,10 @@ def run_window(cfg):
         w = want_w + cur_w - inner_w
         h = want_h + cur_h - inner_h
         m = round(cfg["margin"] * dpi / 96)
+        mt = m if cfg.get("margin_top") is None else round(cfg["margin_top"] * dpi / 96)
         corner = cfg["corner"]
         x = work.left + m if "left" in corner else work.right - w - m
-        y = work.top + m if "top" in corner else work.bottom - h - m
+        y = work.top + mt if "top" in corner else work.bottom - h - m
         user32.SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, SWP_SHOWWINDOW | SWP_NOACTIVATE)
         log(f"window placed at {x},{y} size {w}x{h} (dpi {dpi}, page {inner_w}x{inner_h})")
 
