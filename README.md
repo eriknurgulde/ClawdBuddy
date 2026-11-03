@@ -4,6 +4,14 @@ A tiny pixel critter that acts out what **Claude Code** is doing: it reads with 
 
 > Fan project. Not affiliated with or endorsed by Anthropic.
 
+<p align="center">
+  <img src="docs/clawdbuddy.gif" alt="ClawdBuddy cycling through the time, air quality and usage cards, then reading, editing, running a command, delegating, asking for permission and finishing" width="540">
+</p>
+
+<p align="center">
+  <img src="docs/mono-vs-color.png" alt="The same four screens in single color (top) and in color (bottom)">
+</p>
+
 ## Two versions: pick one or run both
 
 | | 🖥️ Screen version | 🔌 ESP32 version |
@@ -13,7 +21,7 @@ A tiny pixel critter that acts out what **Claude Code** is doing: it reads with 
 | **Setup time** | ~2 minutes | ~30 minutes (wiring + flashing) |
 | **Controls** | mouse: click / double click / hold | button: tap / double tap / hold |
 
-Both versions look and behave **exactly the same**. The screen version is a pixel-for-pixel port of the firmware. If you run both, they update together.
+Both versions look and behave **exactly the same**. The screen version is a pixel-for-pixel port of the firmware. If you run both, they update together. The screen version can optionally be [colored](#colors-screen-version); the OLED is always single color.
 
 **Setup:** everyone does [Step 1](#step-1-connect-claude-code-everyone), then [Step 2A](#step-2a-screen-version) for the screen version and/or [Step 2B](#step-2b-esp32-version) for the ESP32 version.
 
@@ -85,10 +93,35 @@ python web/webbuddy.py --install-startup     # undo with --uninstall-startup
 ```json
 { "place": "Berlin", "latitude": 52.52, "longitude": 13.40,
   "corner": "bottom-right", "scale": 3, "margin": 12, "margin_top": 12,
-  "night_start": 23, "night_end": 7 }
+  "night_start": 23, "night_end": 7, "color": false }
 ```
 
-`corner` can be `bottom-right`, `bottom-left`, `top-right` or `top-left`. `scale` 3 means each OLED pixel is 3×3 screen pixels. Pick a scale that gives whole pixels at your display scaling to keep it sharp: at 125%, use 1.6 or 2.4. `margin` is the gap to the screen edge. `margin_top` sets the top gap separately, e.g. `36` with `"corner": "top-right"` to sit just below the close/minimize buttons of maximized windows.
+`color` turns on [colors](#colors-screen-version). `corner` can be `bottom-right`, `bottom-left`, `top-right` or `top-left`. `scale` 3 means each OLED pixel is 3×3 screen pixels. Pick a scale that gives whole pixels at your display scaling to keep it sharp: at 125%, use 1.6 or 2.4. `margin` is the gap to the screen edge. `margin_top` sets the top gap separately, e.g. `36` with `"corner": "top-right"` to sit just below the close/minimize buttons of maximized windows.
+
+### Colors (screen version)
+
+The screen version is single color by default, just like the OLED. To color it, add `"color": true` to `web/config.json` and reopen ClawdBuddy:
+
+```json
+{ "color": true }
+```
+
+Set it back to `false` (or remove the line) for single color. Colors only tint what's already drawn, so nothing else changes.
+
+| Color | Means |
+|---|---|
+| 🟧 Orange | the mascot (and its mini-me) |
+| 🟢 Green | usage below 70% · clean or fine air · **All done!** |
+| 🟡 Yellow | usage 70–89% · hazy air · **Running** · 25°C or warmer · editing sparks |
+| 🔴 Red | usage 90% or more · bad or toxic air · **Needs you!** · 32°C or warmer |
+| 🟠 Amber | smoggy air |
+| 🔵 Blue | **Reading** / **Searching** · below 5°C · sweat drops |
+| 🩵 Cyan | **Thinking** / **Browsing** · magnifying glass · `Zz` |
+| 🩷 Pink | **Delegating** (subagent) · the ♥ when you pet it |
+| ⚪ Gray | dates, reset times, empty bars and meters, ground, dust, speed lines |
+| ⚪ White | everything else: clock, labels, details, speech bubbles |
+
+The usage number and its bar share a color, so you can read how close you are to the limit at a glance. Same for the air word and the pollution meter.
 
 **macOS / Linux:** the always-on-top window is Windows-only for now. Run `python web/webbuddy.py --no-window` and open `http://127.0.0.1:8787` in your browser (an app window or pinned tab works well).
 
@@ -202,6 +235,7 @@ curl $B/state     # screen version: status JSON
 
 ## Fixes
 
+- **Screen version can be colored:** `"color": true` in `web/config.json` tints usage, air quality, temperature and activity by meaning (see [Colors](#colors-screen-version)). Single color stays the default.
 - **Screen version catches up when started mid-task:** opening ClawdBuddy while Claude Code is already busy now shows the current activity and usage bars immediately, instead of waiting for Claude's next action. `pc/deskbuddy.py` always saves the latest activity and usage, and `web/webbuddy.py` loads them on start.
 - **Screen version never opens a second window:** starting it again while it's running does nothing. On Windows, the port wasn't claimed exclusively, so a second copy could start. A window left over from a stopped run is now reused instead of duplicated.
 - **Screen version `margin_top` option:** places the window below the title-bar buttons of maximized windows so they stay clickable.

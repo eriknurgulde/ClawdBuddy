@@ -12,11 +12,18 @@ const W = 128, H = 64, WHITE = 1, BLACK = 0;
 class OLED {
   constructor() {
     this.buf = new Uint8Array(W * H);
+    this.ink = new Uint8Array(W * H);         // color index per lit pixel (color mode)
+    this.color_ = 0;                          // current ink
     this.cx = 0; this.cy = 0; this.size = 1; this.color = WHITE;
     this.inverted = false; this.dimmed = false;
   }
-  clear() { this.buf.fill(0); }
-  px(x, y, c) { if (x < 0 || y < 0 || x >= W || y >= H) return; this.buf[y * W + x] = c; }
+  clear() { this.buf.fill(0); this.ink.fill(0); }
+  px(x, y, c) {
+    if (x < 0 || y < 0 || x >= W || y >= H) return;
+    const i = y * W + x;
+    this.buf[i] = c;
+    if (c) this.ink[i] = this.color_;
+  }
   hline(x, y, w, c) { for (let i = 0; i < w; i++) this.px(x + i, y, c); }
   vline(x, y, h, c) { for (let i = 0; i < h; i++) this.px(x, y + i, c); }
   fillRect(x, y, w, h, c) { for (let i = x; i < x + w; i++) this.vline(i, y, h, c); }
@@ -150,10 +157,24 @@ class OLED {
 
 const display = new OLED();
 
+// Color mode (screen version only; the real OLED is one color). Toggle with
+// "color": true/false in web/config.json.
+const INK_WHITE = 0, INK_ORANGE = 1, INK_GREEN = 2, INK_YELLOW = 3, INK_RED = 4,
+      INK_BLUE = 5, INK_PINK = 6, INK_GRAY = 7, INK_CYAN = 8, INK_AMBER = 9;
+const PALETTE = [
+  [228, 240, 255], [232, 128, 92], [110, 220, 120], [240, 205, 80], [240, 90, 80],
+  [100, 170, 255], [255, 120, 175], [125, 135, 148], [110, 220, 230], [245, 165, 60],
+];
+const ink = c => { display.color_ = c; };
+const usageInk = p => (p < 70 ? INK_GREEN : p < 90 ? INK_YELLOW : INK_RED);
+const AIR_INK = [INK_GREEN, INK_GREEN, INK_YELLOW, INK_AMBER, INK_RED, INK_RED];
+const tempInk = t => (t < 5 ? INK_BLUE : t < 25 ? INK_WHITE : t < 32 ? INK_YELLOW : INK_RED);
+const TASK_INK = [INK_CYAN, INK_BLUE, INK_BLUE, INK_ORANGE, INK_YELLOW, INK_CYAN, INK_PINK, INK_WHITE];
+
 // =====================================================================
 //                               CONFIG
 // =====================================================================
-let CFG = { place: "Almaty", latitude: 43.2295, longitude: 76.8374, night_start: 23, night_end: 7 };
+let CFG = { place: "Almaty", latitude: 43.2295, longitude: 76.8374, night_start: 23, night_end: 7, color: false };
 
 // =====================================================================
 //                               STATE
@@ -333,21 +354,27 @@ const drawDegree = (x, y, r) => display.drawCircle(x + r, y + r, r, WHITE);
 function drawTimeCard(yo) {
   textAt(0, 1 + yo, 2, pad2(nowTm.getHours()) + ":" + pad2(nowTm.getMinutes()));
   if (!isNaN(outdoorTemp)) {
+    ink(tempInk(outdoorTemp));
     const t = String(lround(outdoorTemp));
     const w = t.length * 12 + 7 + 12, x = W - w;
     textAt(x, 1 + yo, 2, t);
     drawDegree(x + t.length * 12 + 1, 1 + yo, 2);
     textAt(x + t.length * 12 + 7, 1 + yo, 2, "C");
   }
+  ink(INK_GRAY);
   textAt(0, 21 + yo, 1, `${DAYS[nowTm.getDay()]}, ${pad2(nowTm.getDate())} ${MONTHS[nowTm.getMonth()]}`);
 }
 
 function drawAirCard(yo) {
   const lvl = airLevel(usAqi);
-  textAt(0, 1 + yo, 2, "Air: " + (lvl < 0 ? "..." : AIR_WORD[lvl]));
+  textAt(0, 1 + yo, 2, "Air: ");
+  if (lvl >= 0) ink(AIR_INK[lvl]);
+  textAt(60, 1 + yo, 2, lvl < 0 ? "..." : AIR_WORD[lvl]);
+  ink(INK_WHITE);
   textAt(0, 21 + yo, 1, lvl < 0 ? "checking the sky" : AIR_ADVICE[lvl]);
   for (let i = 0; i < 6; i++) {
     const h = 2 + i, x = 105 + i * 4, y = 28 + yo - h;
+    ink(lvl >= 0 && i <= lvl ? AIR_INK[i] : INK_GRAY);
     if (lvl >= 0 && i <= lvl) display.fillRect(x, y, 3, h, WHITE);
     else display.hline(x, 28 + yo, 3, WHITE);
   }
@@ -357,13 +384,18 @@ function drawLimitCard(yo, weekly) {
   const l = weekly ? sevenDay : fiveHour;
   const p = effectivePct(l);
   const val = p < 0 ? "--" : Math.trunc(p + 0.5) + "%";
-  textAt(0, 1 + yo, 2, (weekly ? "Week " : "5h   ") + val);
+  textAt(0, 1 + yo, 2, weekly ? "Week " : "5h   ");
+  if (p >= 0) ink(usageInk(p));
+  textAt(60, 1 + yo, 2, val);
+  ink(INK_GRAY);
   if (p < 0) { textAt(0, 21 + yo, 1, "open Claude Code"); return; }
 
   const bw = 66, bh = 7, by = 21 + yo;
   display.drawRect(0, by, bw, bh, WHITE);
   const fill = Math.trunc((bw - 4) * Math.min(p, 100) / 100 + 0.5);
+  ink(usageInk(p));
   if (fill > 0) display.fillRect(2, by + 2, fill, bh - 4, WHITE);
+  ink(INK_GRAY);
 
   if (l.resetsAt > 0) {
     if (epochNow() >= l.resetsAt) { textRight(W, by, 1, "reset!"); return; }
@@ -379,12 +411,15 @@ function drawActivityCard(yo, now) {
   if (activity === ACT_WAITING) title = "Needs you!";
   else if (activity === ACT_DONE) title = "All done!";
   else if (activity === ACT_WORKING) title = TASK_LABEL[task];
+  ink(activity === ACT_WAITING ? INK_RED : activity === ACT_DONE ? INK_GREEN : TASK_INK[task]);
   textAt(0, 1 + yo, 2, title);
+  ink(INK_WHITE);
   if (activity === ACT_WORKING && task === T_THINK && !actDetail) textAt(0, 21 + yo, 1, "...");
   else marquee(actDetail, 21 + yo, detailSince, now);
 }
 
 function drawCard(c, yo, now) {
+  ink(INK_WHITE);
   if (c === C_TIME) drawTimeCard(yo);
   else if (c === C_AIR) drawAirCard(yo);
   else if (c === C_5H) drawLimitCard(yo, false);
@@ -409,6 +444,7 @@ function drawInfoBand(now) {
 // =====================================================================
 function drawClawd(ox, oy, s, eyes, look, lookY, legs, armL, armR, sitting, bob, mask) {
   const by = oy + bob;
+  ink(INK_ORANGE);
   display.fillRect(ox + 2 * s, by, 10 * s, 5 * s, WHITE);
   display.fillRect(ox, by + (2 + armL) * s, 2 * s, s, WHITE);
   display.fillRect(ox + 12 * s, by + (2 + armR) * s, 2 * s, s, WHITE);
@@ -444,13 +480,16 @@ function drawClawd(ox, oy, s, eyes, look, lookY, legs, armL, armR, sitting, bob,
   if (mask) {
     const mx0 = ox + 3 * s, my0 = by + 3 * s + 1;
     display.fillRect(mx0, my0, 8 * s, 2 * s - 1, BLACK);
+    ink(INK_WHITE);
     display.hline(mx0 + 2, my0 + 2, 8 * s - 4, WHITE);
+    ink(INK_ORANGE);
     display.drawLine(ox + 2 * s, by + 2 * s + 2, mx0, my0, BLACK);
     display.drawLine(ox + 12 * s - 1, by + 2 * s + 2, mx0 + 8 * s - 1, my0, BLACK);
   }
 }
 
 function drawSideBubble(ox, oy, txt) {
+  ink(INK_WHITE);
   const w = txt.length * 6 + 7, h = 11;
   const y = Math.max(BAND_H + 2, oy - 4);
   let x = ox + MW + 2;
@@ -462,12 +501,14 @@ function drawSideBubble(ox, oy, txt) {
 }
 
 function drawHeart(x, y) {
+  ink(INK_PINK);
   display.fillCircle(x - 2, y, 2, WHITE);
   display.fillCircle(x + 2, y, 2, WHITE);
   display.fillTriangle(x - 4, y + 1, x + 4, y + 1, x, y + 5, WHITE);
 }
 
 function drawZz(ox, oy, now) {
+  ink(INK_CYAN);
   const p = Math.trunc(now / 140) % 16;
   textAt(Math.min(ox + MW + 1 + Math.trunc(p / 4), W - 6), oy + 2 - Math.trunc(p / 3), 1, "z");
   const q = (p + 8) % 16;
@@ -475,18 +516,21 @@ function drawZz(ox, oy, now) {
 }
 
 function drawSweat(ox, oy, now) {
+  ink(INK_BLUE);
   const x = ox + 12 * S + 2, y = oy + 1 + Math.trunc(now / 90) % 8;
   display.fillCircle(x, y, 1, WHITE);
   display.px(x, y - 2, WHITE);
 }
 
 function drawMagnifier(ox, oy, dir) {
+  ink(INK_CYAN);
   const hx = dir > 0 ? ox + 14 * S : ox - 1, hy = oy + S;
   display.drawLine(hx, hy, hx + dir * 3, hy - 3, WHITE);
   display.drawCircle(hx + dir * 6, hy - 6, 3, WHITE);
 }
 
 function drawSparks(ox, oy, dir) {
+  ink(INK_YELLOW);
   const x = dir > 0 ? ox + 14 * S + 2 : ox - 3, y = oy + 3 * S;
   for (let i = 0; i < 3; i++) display.px(x + dir * random(0, 6), y - random(0, 7), WHITE);
 }
@@ -619,6 +663,7 @@ function updateAndDrawMascot(now) {
   const ox = Math.trunc(mx + 0.5);
   const oy = sitting ? GROUND_Y - 5 * S : GROUND_Y - MH - Math.trunc(jumpY);
 
+  ink(INK_GRAY);
   for (let x = 0; x < W; x += 4) display.px(x, GROUND_Y + 1, WHITE);
   const shadow = Math.max(10, 30 - Math.trunc(jumpY) * 3);
   display.hline(ox + MW / 2 - Math.trunc(shadow / 2), GROUND_Y + 2, shadow, WHITE);
@@ -644,6 +689,7 @@ function updateAndDrawMascot(now) {
   const mask = airLevel(usAqi) >= 3 && !sitting;
   drawClawd(ox, oy, S, eyes, lookX, lookY, legPhase, armL, armR, sitting, bob, mask);
 
+  ink(INK_GRAY);
   if (speedLines && walking) {
     for (let i = 0; i < 3; i++) {
       const len = 6 + (Math.trunc(now / 60) + i * 3) % 7;
@@ -670,12 +716,15 @@ const ON = [228, 240, 255], ON_DIM = [110, 118, 128];
 
 function present() {
   const on = display.dimmed ? ON_DIM : ON;
+  const k = display.dimmed ? 0.5 : 1;
   for (let i = 0; i < W * H; i++) {
     const lit = display.buf[i] ^ (display.inverted ? 1 : 0);
+    // color mode: lit pixels use their ink (pixels lit only by the "!" flash stay white)
+    const c = !lit ? null : (CFG.color && display.buf[i]) ? PALETTE[display.ink[i]].map(v => v * k) : on;
     const o = i * 4;
-    img.data[o] = lit ? on[0] : 0;
-    img.data[o + 1] = lit ? on[1] : 0;
-    img.data[o + 2] = lit ? on[2] : 0;
+    img.data[o] = c ? c[0] : 0;
+    img.data[o + 1] = c ? c[1] : 0;
+    img.data[o + 2] = c ? c[2] : 0;
     img.data[o + 3] = 255;
   }
   ctx.putImageData(img, 0, 0);
@@ -687,6 +736,7 @@ function frame() {
   nowTm = new Date();
   display.dimmed = isNight();
   display.clear();
+  ink(INK_WHITE);
   updateCards(now);
   drawInfoBand(now);
   updateAndDrawMascot(now);
