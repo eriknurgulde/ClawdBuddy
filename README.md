@@ -2,7 +2,7 @@
 
 A tiny pixel critter that lives on a 128×64 OLED on your desk and acts out what **Claude Code** is doing: it reads with a magnifying glass, hammers while editing, sprints while commands run, and jumps up and down when Claude needs your permission. It also shows your **Claude usage limits**, the **time**, the **temperature** and **how polluted the air is**, in plain words.
 
-Built from an ESP32, an SSD1306 OLED and a touch sensor: about $10 of parts.
+Built from an ESP32, an SSD1306 OLED and a push button: about $10 of parts.
 
 > Fan project. Not affiliated with or endorsed by Anthropic.
 
@@ -36,7 +36,7 @@ Air quality is shown as **Clean → Fine → Hazy → Smog → Bad! → Toxic** 
 
 Also: wanders, hops, stretches and sits when idle · tired eyes at ≥70% usage, sweating at ≥90%, asleep at 100% · wears a mask when air is smoggy · dims and sleeps at night.
 
-**Touch:** tap = hop / dismiss alert · double tap = next card · long press = pet it ♥
+**Button:** tap = hop / dismiss alert · double tap = next card · long press = pet it ♥
 
 ## Hardware
 
@@ -44,15 +44,15 @@ Also: wanders, hops, stretches and sits when idle · tired eyes at ≥70% usage,
 |---|---|
 | ESP32 dev board | any classic ESP32 (WROOM-32) |
 | SSD1306 0.96" OLED, 128×64, I²C | address `0x3C` |
-| TTP223 capacitive touch module | or any active-high button |
+| Push button | or a TTP223 touch module |
 
 | Module pin | ESP32 pin |
 |---|---|
 | OLED VCC / GND | 3V3 / GND |
 | OLED SDA | GPIO 21 |
 | OLED SCL | GPIO 22 |
-| Touch VCC / GND | 3V3 / GND |
-| Touch SIG | GPIO 23 |
+| Button | between GPIO 23 and 3V3 (no resistor needed) |
+| *or* TTP223 VCC / GND / SIG | 3V3 / GND / GPIO 23 |
 
 ## Setup
 

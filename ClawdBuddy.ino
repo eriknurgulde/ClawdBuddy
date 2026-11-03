@@ -3,7 +3,8 @@
   ---------------------------------------------------------------------------
   Hardware (same as DeskBuddy):
     ESP32, SSD1306 128x64 OLED on I2C (SDA 21, SCL 22, addr 0x3C),
-    TTP223 touch sensor on GPIO 23.
+    push button on GPIO 23 (to 3V3 by default, see BUTTON_ACTIVE_LOW),
+    or a TTP223 touch module.
 
   Layout:
     y 0..29   info card (big text), rotates with a slide animation
@@ -54,7 +55,12 @@
 #endif
 
 // ================= HARDWARE =================
-#define TOUCH_PIN 23
+#define BUTTON_PIN 23
+#ifndef BUTTON_ACTIVE_LOW
+#define BUTTON_ACTIVE_LOW false   // true if the button connects GPIO 23 to GND
+#endif
+const unsigned long DEBOUNCE_MS = 25;
+unsigned long buttonPresses = 0;   // reported on GET / for wiring checks
 #define SCREEN_W 128
 #define SCREEN_H 64
 #define OLED_ADDR 0x3C
@@ -292,6 +298,8 @@ void handleStatus() {
   d["temp"] = (float)outdoorTemp;
   d["us_aqi"] = (int)usAqi;
   d["pm2_5"] = (float)pm25;
+  d["button_presses"] = buttonPresses;
+  d["button_down"] = isTouching;
   String out; serializeJson(d, out);
   server.send(200, "application/json", out);
 }
@@ -308,7 +316,9 @@ void bootMessage(const char* l1, const char* l2 = nullptr) {
 
 void setup() {
   Serial.begin(115200);
-  pinMode(TOUCH_PIN, INPUT);
+  // Internal pull resistor keeps a plain button from floating (phantom presses).
+  // A TTP223 module drives the pin itself, so the pull-down is harmless there.
+  pinMode(BUTTON_PIN, BUTTON_ACTIVE_LOW ? INPUT_PULLUP : INPUT_PULLDOWN);
   randomSeed(esp_random());
 
   Wire.begin(21, 22);
@@ -425,7 +435,14 @@ void onLongRelease(unsigned long now) {
 }
 
 void handleInput(unsigned long now) {
-  bool touch = digitalRead(TOUCH_PIN);
+  // debounce: only accept a level that has been stable for DEBOUNCE_MS
+  static bool lastRaw = false, stable = false;
+  static unsigned long changedAt = 0;
+  bool raw = digitalRead(BUTTON_PIN) != BUTTON_ACTIVE_LOW;
+  if (raw != lastRaw) { lastRaw = raw; changedAt = now; }
+  if (now - changedAt >= DEBOUNCE_MS) stable = raw;
+  bool touch = stable;
+  if (touch && !isTouching) buttonPresses++;
   if (touch && !isTouching) { isTouching = true; touchStart = now; lastInteraction = now; }
   if (touch && isTouching && !isLongPressing && now - touchStart > LONG_PRESS_MS) {
     isLongPressing = true; tapCount = 0; onLongPress(now);

@@ -23,3 +23,8 @@ const char* TZ_INFO = "<+05>-5";
 // Night mode: screen dims and the mascot falls asleep when left alone
 const int NIGHT_START = 23;
 const int NIGHT_END   = 7;
+
+// Button on GPIO 23. Default: button between GPIO 23 and 3V3 (internal pull-down).
+// Set to true if your button connects GPIO 23 to GND instead (internal pull-up).
+// A TTP223 touch module works with the default.
+#define BUTTON_ACTIVE_LOW false
